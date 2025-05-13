@@ -13,7 +13,7 @@ st.title("Student Success Prediction Dashboard")
 # Load dataset
 @st.cache_data
 def load_data():
-    data = pd.read_csv("data/xAPI-Edu-Data.csv")
+    data = pd.read_csv("xAPI-Edu-Data.csv")
     return data
 
 data = load_data()
