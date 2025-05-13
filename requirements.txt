@@ -1,5 +1,5 @@
-student-success-dashboard/
-├── main.py
-├── requirements.txt
-└── data/
-    └── xAPI-Edu-Data.csv
+streamlit
+pandas
+numpy
+scikit-learn==1.3.0
+matplotlib
