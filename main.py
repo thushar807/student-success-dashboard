@@ -19,7 +19,7 @@ try:
             "type": st.secrets["firebase"]["type"],
             "project_id": st.secrets["firebase"]["project_id"],
             "private_key_id": st.secrets["firebase"]["private_key_id"],
-            "private_key": st.secrets["firebase"]["private_key"].replace("\\\\n", "\n"),
+            "private_key": st.secrets["firebase"]["private_key"].replace("\\n", "\n"),
             "client_email": st.secrets["firebase"]["client_email"],
             "client_id": st.secrets["firebase"]["client_id"],
             "auth_uri": st.secrets["firebase"]["auth_uri"],
@@ -108,6 +108,8 @@ with tab1:
         input_df = pd.DataFrame([features])
         for col in label_encoders:
             input_df[col] = label_encoders[col].transform(input_df[col])
+
+        input_df = input_df[X.columns]  # ✅ FIX: Align input columns with training data
 
         prediction = model.predict(input_df)[0]
         prediction_proba = model.predict_proba(input_df)[0]
