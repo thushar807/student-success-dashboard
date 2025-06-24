@@ -9,8 +9,19 @@ from sklearn.preprocessing import LabelEncoder
 
 # 🎨 Page configuration
 st.set_page_config(page_title="🎓 Student Success Predictor", layout="wide")
-with open("custom_background.html") as f:
-    st.markdown(f.read(), unsafe_allow_html=True)
+st.markdown("""
+    <style>
+    body {
+        background: linear-gradient(to bottom right, #f0f9ff, #cbebff);
+    }
+    .stApp {
+        background-color: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(5px);
+        border-radius: 12px;
+        padding: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 st.markdown("<h1 style='text-align: center; color: #2E8B57;'>🎓 Student Success Predictor Dashboard</h1>", unsafe_allow_html=True)
 
 # 🌟 Helper function: Smart Pass/Fail inference
