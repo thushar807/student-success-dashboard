@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,89 +8,100 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
 from sklearn.preprocessing import LabelEncoder
 
+# Page config
 st.set_page_config(page_title="Student Success Predictor", layout="wide")
-st.title("📊 Student Success Predictor Dashboard")
+st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🎓 Student Success Predictor Dashboard</h1>", unsafe_allow_html=True)
 
-# File upload
-uploaded_file = st.file_uploader("Upload a student dataset (CSV format)", type=["csv"])
+# Upload section
+st.sidebar.header("📂 Upload Data")
+uploaded_file = st.sidebar.file_uploader("Upload a student dataset (CSV)", type=["csv"])
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    st.subheader("📋 Dataset Preview")
-    st.dataframe(df.head())
 
-    # Automatically detect categorical columns
-    cat_cols = df.select_dtypes(include=['object']).columns.tolist()
-    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    # Attempt to detect numeric grade column
+    grade_cols = [col for col in df.columns if 'G' in col.upper() and df[col].dtype in [np.int64, np.float64]]
+    if not grade_cols:
+        st.error("No grade column detected for Pass/Fail conversion. Please ensure dataset has final grades.")
+    else:
+        final_grade_col = grade_cols[-1]
+        df['Success'] = df[final_grade_col].apply(lambda x: 1 if x >= 50 else 0)
 
-    st.subheader("⚙️ Model Settings")
-    target_column = st.selectbox("Select the target column (what to predict):", options=cat_cols)
-    feature_columns = st.multiselect("Select input features:", options=[col for col in df.columns if col != target_column])
+        st.subheader("📋 Dataset Preview")
+        st.dataframe(df.head())
 
-    if target_column and feature_columns:
-        data = df[feature_columns + [target_column]].dropna()
+        st.subheader("⚙️ Model Settings")
+        feature_options = [col for col in df.columns if col not in ['Success']]
+        feature_columns = st.multiselect("Select input features:", options=feature_options)
 
-        # Encode categorical columns
-        encoders = {}
-        for col in data.columns:
-            if data[col].dtype == 'object':
-                le = LabelEncoder()
-                data[col] = le.fit_transform(data[col])
-                encoders[col] = le
+        if feature_columns:
+            data = df[feature_columns + ['Success']].dropna()
 
-        X = data[feature_columns]
-        y = data[target_column]
+            # Encode categorical features
+            encoders = {}
+            for col in data.columns:
+                if data[col].dtype == 'object':
+                    le = LabelEncoder()
+                    data[col] = le.fit_transform(data[col])
+                    encoders[col] = le
 
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        model = RandomForestClassifier(random_state=42, class_weight='balanced')
-        model.fit(X_train, y_train)
+            X = data[feature_columns]
+            y = data['Success']
 
-        st.success("✅ Model trained successfully!")
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+            model = RandomForestClassifier(random_state=42)
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            y_pred_proba = model.predict_proba(X_test)
 
-        # Input form for prediction
-        st.subheader("📥 Enter Student Details for Prediction")
-        user_input = {}
-        for col in feature_columns:
-            if col in encoders:
-                user_input[col] = st.selectbox(f"{col}", encoders[col].classes_)
-            else:
-                min_val = float(df[col].min())
-                max_val = float(df[col].max())
-                user_input[col] = st.slider(f"{col}", min_value=min_val, max_value=max_val, value=min_val)
+            st.success("✅ Model trained successfully!")
 
-        # Convert user input to dataframe
-        input_df = pd.DataFrame([user_input])
-        for col in input_df.columns:
-            if col in encoders:
-                input_df[col] = encoders[col].transform(input_df[col])
+            # User prediction
+            st.subheader("📥 Enter Student Details for Prediction")
+            user_input = {}
+            for col in feature_columns:
+                if col in encoders:
+                    user_input[col] = st.selectbox(f"{col}", encoders[col].classes_)
+                else:
+                    user_input[col] = st.slider(f"{col}", float(df[col].min()), float(df[col].max()), float(df[col].mean()))
+            input_df = pd.DataFrame([user_input])
+            for col in input_df.columns:
+                if col in encoders:
+                    input_df[col] = encoders[col].transform(input_df[col])
 
-        prediction = model.predict(input_df)[0]
-        pred_proba = model.predict_proba(input_df)[0]
+            pred = model.predict(input_df)[0]
+            proba = model.predict_proba(input_df)[0]
 
-        target_labels = encoders[target_column].classes_ if target_column in encoders else sorted(y.unique())
+            # 📌 Prediction Result
+            st.subheader("🎯 Prediction Result")
+            prediction_label = "Pass" if pred == 1 else "Fail"
+            st.metric(label="🎓 Predicted Outcome", value=prediction_label)
 
-        st.subheader("🔮 Prediction Result")
-        st.write(f"**Predicted Class:** {encoders[target_column].inverse_transform([prediction])[0] if target_column in encoders else prediction}")
+            # Probability bar chart
+            st.subheader("📊 Prediction Probabilities")
+            fig, ax = plt.subplots()
+            ax.bar(['Fail', 'Pass'], proba, color=['red', 'green'])
+            ax.set_ylabel("Probability")
+            st.pyplot(fig)
 
-        st.subheader("📈 Prediction Probabilities")
-        fig, ax = plt.subplots()
-        ax.bar(target_labels, pred_proba)
-        ax.set_ylabel("Probability")
-        ax.set_title("Class Probabilities")
-        st.pyplot(fig)
+            # Feature importance
+            st.subheader("📌 Feature Importance")
+            importances = pd.DataFrame({
+                "Feature": feature_columns,
+                "Importance": model.feature_importances_
+            }).sort_values(by="Importance", ascending=False)
+            st.bar_chart(importances.set_index("Feature"))
 
-        st.subheader("💡 Feature Importance")
-        importance_df = pd.DataFrame({
-            'Feature': feature_columns,
-            'Importance': model.feature_importances_
-        }).sort_values(by="Importance", ascending=False)
-        st.bar_chart(importance_df.set_index("Feature"))
-
-        st.subheader("📊 Model Evaluation (on test set)")
-        y_pred = model.predict(X_test)
-        report = classification_report(y_test, y_pred, output_dict=True)
-        report_df = pd.DataFrame(report).transpose()
-        st.dataframe(report_df)
+            # Report summary
+            st.subheader("📈 Model Evaluation (F1 Score & Accuracy)")
+            report = classification_report(y_test, y_pred, output_dict=True)
+            summary = pd.DataFrame({
+                "Accuracy": [report["accuracy"]],
+                "F1 Score": [report["1"]["f1-score"]],
+                "Precision": [report["1"]["precision"]],
+                "Recall": [report["1"]["recall"]]
+            }).T.rename(columns={0: "Score"})
+            st.dataframe(summary.style.highlight_max(axis=0, color="lightgreen"))
 
 else:
-    st.warning("Please upload a dataset to continue.")
+    st.info("👈 Please upload a dataset from the sidebar to begin.")
