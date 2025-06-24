@@ -19,12 +19,15 @@ def infer_pass_fail(df):
     if 'StudyTimeWeekly' in df.columns:
         score += df['StudyTimeWeekly'].fillna(0)
         proxy_cols.append('StudyTimeWeekly')
+
     if 'Absences' in df.columns:
         score -= df['Absences'].fillna(0)
         proxy_cols.append('Absences')
+
     if 'Tutoring' in df.columns:
         score += df['Tutoring'].fillna(0) * 5
         proxy_cols.append('Tutoring')
+
     if 'AnnouncementsView' in df.columns:
         score += df['AnnouncementsView'].fillna(0)
         proxy_cols.append('AnnouncementsView')
@@ -36,22 +39,22 @@ def infer_pass_fail(df):
     df['Pass_Fail'] = inferred.map({1: 'Pass', 0: 'Fail'})
     return df, proxy_cols
 
-# Sidebar uploader
+# Sidebar for upload
 with st.sidebar:
     st.subheader("📂 Upload Data")
     uploaded_file = st.file_uploader("Upload a student dataset (CSV)", type=["csv"])
 
-# Main logic
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
     st.subheader("📄 Dataset Preview")
     st.dataframe(df.head())
 
-    # STEP 1: Create 'PassStatus' if not present
+    # --- STEP 1: Create PassStatus ---
     if "PassStatus" not in df.columns:
-        possible_grade_cols = ["G3", "final_grade", "FinalGrade", "grade"]
+        grade_cols = ["G3", "final_grade", "FinalGrade", "grade"]
         found = False
-        for col in possible_grade_cols:
+
+        for col in grade_cols:
             if col in df.columns:
                 df["PassStatus"] = df[col].apply(lambda x: "Pass" if x >= 10 else "Fail")
                 found = True
@@ -62,20 +65,23 @@ if uploaded_file:
             if "Pass_Fail" in df.columns:
                 df["PassStatus"] = df["Pass_Fail"]
                 df.drop(columns=["Pass_Fail"], inplace=True)
-                st.info(f"🧠 Pass/Fail status inferred using proxy columns: {', '.join(inferred_cols)}.")
+                st.info(f"🧠 Pass/Fail status inferred using proxy columns: {', '.join(inferred_cols) if inferred_cols else 'none'}")
             else:
                 st.error("❌ Could not detect or infer a 'Pass/Fail' outcome. Please include a grade column.")
                 st.stop()
 
-    # STEP 2: Model Setup
+    # --- STEP 2: Model Setup ---
     st.subheader("⚙️ Model Settings")
     target_column = "PassStatus"
     feature_columns = st.multiselect("Select input features for prediction:", options=[col for col in df.columns if col != target_column])
 
     if feature_columns:
         data = df[feature_columns + [target_column]].dropna()
-        encoders = {}
+        if len(data[target_column].unique()) < 2:
+            st.error("⚠️ Cannot train model — only one class (e.g., all Fail or all Pass). Try a better dataset.")
+            st.stop()
 
+        encoders = {}
         for col in data.columns:
             if data[col].dtype == "object":
                 le = LabelEncoder()
@@ -91,7 +97,7 @@ if uploaded_file:
 
         st.success("✅ Model trained successfully!")
 
-        # STEP 3: Input form
+        # --- STEP 3: Prediction UI ---
         st.subheader("📝 Enter Student Details for Prediction")
         user_input = {}
         for col in feature_columns:
@@ -111,7 +117,7 @@ if uploaded_file:
         proba = model.predict_proba(input_df)[0]
         label_names = encoders[target_column].classes_ if target_column in encoders else sorted(y.unique())
 
-        # STEP 4: Results
+        # --- STEP 4: Results ---
         st.subheader("🎯 Prediction Result")
         st.write(f"**Predicted Class:** {encoders[target_column].inverse_transform([prediction])[0] if target_column in encoders else prediction}")
 
