@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
 from sklearn.preprocessing import LabelEncoder
 
-st.set\_page\_config(page\_title="Student Success Predictor", layout="wide")
+st.set_page_config(page_title="Student Success Predictor", layout="wide")
 st.title("📊 Student Success Predictor Dashboard")
 
 # File upload
