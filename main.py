@@ -9,6 +9,8 @@ from sklearn.preprocessing import LabelEncoder
 
 # 🎨 Page configuration
 st.set_page_config(page_title="🎓 Student Success Predictor", layout="wide")
+with open("custom_background.html") as f:
+    st.markdown(f.read(), unsafe_allow_html=True)
 st.markdown("<h1 style='text-align: center; color: #2E8B57;'>🎓 Student Success Predictor Dashboard</h1>", unsafe_allow_html=True)
 
 # 🌟 Helper function: Smart Pass/Fail inference
