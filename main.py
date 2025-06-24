@@ -11,73 +11,63 @@ from sklearn.preprocessing import LabelEncoder
 st.set_page_config(page_title="🎓 Student Success Predictor", layout="wide")
 st.markdown("<h1 style='text-align: center; color: green;'>🎓 Student Success Predictor Dashboard</h1>", unsafe_allow_html=True)
 
-# Upload section
 # Smart Pass/Fail inference function
 def infer_pass_fail(df):
     proxy_cols = []
     score = pd.Series(0, index=df.index, dtype=float)
 
-    # Handle study time
     if 'StudyTimeWeekly' in df.columns:
         score += df['StudyTimeWeekly'].fillna(0)
         proxy_cols.append('StudyTimeWeekly')
-
-    # Handle absences
     if 'Absences' in df.columns:
         score -= df['Absences'].fillna(0)
         proxy_cols.append('Absences')
-
-    # Handle tutoring
     if 'Tutoring' in df.columns:
         score += df['Tutoring'].fillna(0) * 5
         proxy_cols.append('Tutoring')
-
-    # Handle announcements (common in online platforms)
     if 'AnnouncementsView' in df.columns:
         score += df['AnnouncementsView'].fillna(0)
         proxy_cols.append('AnnouncementsView')
 
-    # Normalize score
     if score.std() != 0:
         score = (score - score.mean()) / score.std()
-    
-    # Thresholding (mean-based)
+
     inferred = (score > score.mean()).astype(int)
     df['Pass_Fail'] = inferred.map({1: 'Pass', 0: 'Fail'})
     return df, proxy_cols
-    
+
+# Sidebar uploader
 with st.sidebar:
     st.subheader("📂 Upload Data")
     uploaded_file = st.file_uploader("Upload a student dataset (CSV)", type=["csv"])
 
+# Main logic
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
     st.subheader("📄 Dataset Preview")
     st.dataframe(df.head())
 
-# --- STEP 1: Create 'PassStatus' if not present ---
-if "PassStatus" not in df.columns:
-    # Try to infer from known grade columns
-    possible_grade_cols = ["G3", "final_grade", "FinalGrade", "grade"]
-    found = False
-    for col in possible_grade_cols:
-        if col in df.columns:
-            df["PassStatus"] = df[col].apply(lambda x: "Pass" if x >= 10 else "Fail")
-            found = True
-            break
+    # STEP 1: Create 'PassStatus' if not present
+    if "PassStatus" not in df.columns:
+        possible_grade_cols = ["G3", "final_grade", "FinalGrade", "grade"]
+        found = False
+        for col in possible_grade_cols:
+            if col in df.columns:
+                df["PassStatus"] = df[col].apply(lambda x: "Pass" if x >= 10 else "Fail")
+                found = True
+                break
 
-    if not found:
-        df, inferred_cols = infer_pass_fail(df)
-        if "Pass_Fail" in df.columns:
-            df["PassStatus"] = df["Pass_Fail"]
-            df.drop(columns=["Pass_Fail"], inplace=True)
-            st.info(f"🧠 Pass/Fail status inferred using proxy columns: {', '.join(inferred_cols)}.")
-        else:
-            st.error("❌ Could not detect or infer a 'Pass/Fail' outcome. Please include a grade column.")
-            st.stop()
+        if not found:
+            df, inferred_cols = infer_pass_fail(df)
+            if "Pass_Fail" in df.columns:
+                df["PassStatus"] = df["Pass_Fail"]
+                df.drop(columns=["Pass_Fail"], inplace=True)
+                st.info(f"🧠 Pass/Fail status inferred using proxy columns: {', '.join(inferred_cols)}.")
+            else:
+                st.error("❌ Could not detect or infer a 'Pass/Fail' outcome. Please include a grade column.")
+                st.stop()
 
-
-    # --- STEP 2: Model setup ---
+    # STEP 2: Model Setup
     st.subheader("⚙️ Model Settings")
     target_column = "PassStatus"
     feature_columns = st.multiselect("Select input features for prediction:", options=[col for col in df.columns if col != target_column])
@@ -101,7 +91,7 @@ if "PassStatus" not in df.columns:
 
         st.success("✅ Model trained successfully!")
 
-        # --- STEP 3: Input form ---
+        # STEP 3: Input form
         st.subheader("📝 Enter Student Details for Prediction")
         user_input = {}
         for col in feature_columns:
@@ -121,7 +111,7 @@ if "PassStatus" not in df.columns:
         proba = model.predict_proba(input_df)[0]
         label_names = encoders[target_column].classes_ if target_column in encoders else sorted(y.unique())
 
-        # --- STEP 4: Results ---
+        # STEP 4: Results
         st.subheader("🎯 Prediction Result")
         st.write(f"**Predicted Class:** {encoders[target_column].inverse_transform([prediction])[0] if target_column in encoders else prediction}")
 
