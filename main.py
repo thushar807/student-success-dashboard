@@ -2,36 +2,15 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import classification_report, confusion_matrix
-import seaborn as sns
-
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report, RocCurveDisplay, PrecisionRecallDisplay
 from modeling import train_model, get_feature_importance
 
-# Page Config
 st.set_page_config(page_title="🎓 Student Success Predictor", layout="wide")
-st.markdown("""
-    <style>
-    body {
-        background-image: url("https://raw.githubusercontent.com/ThusharStorage/student-assets/main/wow-office.jpg");
-        background-size: cover;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-    }
-    .stApp {
-        background-color: rgba(255, 255, 255, 0.92);
-        backdrop-filter: blur(6px);
-        border-radius: 16px;
-        padding: 20px;
-        box-shadow: 0 8px 30px rgba(0,0,0,0.1);
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 st.markdown("<h1 style='text-align: center; color: #2E8B57;'>🎓 Student Success Predictor Dashboard</h1>", unsafe_allow_html=True)
 
-# Upload Data
+# Upload and read dataset
 with st.sidebar:
-    st.header("📁 Upload Student Dataset")
+    st.markdown("### 📁 Upload Student Dataset")
     uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
 
 if uploaded_file:
@@ -39,80 +18,54 @@ if uploaded_file:
     st.subheader("📄 Dataset Preview")
     st.dataframe(df.head())
 
-    # Create PassStatus if missing
-    if "PassStatus" not in df.columns:
-        grade_cols = ["G3", "final_grade", "FinalGrade", "grade"]
-        found = False
-        for col in grade_cols:
-            if col in df.columns:
-                df["PassStatus"] = df[col].apply(lambda x: "Pass" if x >= 10 else "Fail")
-                found = True
-                break
-        if not found:
-            st.error("❌ Could not infer Pass/Fail column. Please include a grade column.")
-            st.stop()
-
     st.subheader("⚙️ Model Configuration")
-    target_column = "PassStatus"
-    feature_columns = st.multiselect("🧠 Select features for prediction:", options=[col for col in df.columns if col != target_column])
-    model_type = st.selectbox("Select Model", ["Random Forest", "Logistic Regression"])
-    use_grid = st.checkbox("Enable Hyperparameter Tuning (GridSearchCV)")
+    target_column = st.selectbox("🎯 Select the target column (e.g., Pass/Fail):", df.columns)
+    feature_columns = st.multiselect("🧠 Select input features: ", [col for col in df.columns if col != target_column])
+    model_name = st.selectbox("🔍 Choose model", ["Random Forest", "Logistic Regression"])
+    tune = st.checkbox("🔧 Use Grid Search for hyperparameter tuning")
 
-    if feature_columns:
-        with st.spinner("Training model..."):
-            model, X_test, y_test, best_params, cv_score = train_model(
-                df=df,
-                feature_columns=feature_columns,
-                target_column=target_column,
-                model_name=model_type,
-                grid_search=use_grid
-            )
+    if feature_columns and target_column:
+        model, X_test, y_test, best_params, cv_score = train_model(df, feature_columns, target_column, model_name, grid_search=tune)
 
         st.success("✅ Model trained successfully!")
-
         if best_params:
-            st.info(f"🔍 Best Parameters: {best_params}")
-        st.write(f"📈 Cross-validated Score: {cv_score:.4f}")
+            st.write("Best parameters:", best_params)
+        if cv_score:
+            st.write(f"Cross-validated Accuracy: {cv_score:.4f}")
 
-        # Prediction Form
-        st.subheader("📝 Enter Student Details")
-        user_input = {}
-        for col in feature_columns:
-            if df[col].dtype == "object":
-                user_input[col] = st.selectbox(f"{col}", sorted(df[col].dropna().unique()))
-            else:
-                user_input[col] = st.slider(f"{col}", float(df[col].min()), float(df[col].max()), float(df[col].mean()))
+        st.subheader("📈 Evaluation Results")
 
-        input_df = pd.DataFrame([user_input])
-        prediction = model.predict(input_df)[0]
-        proba = model.predict_proba(input_df)[0]
-
-        st.subheader("🎯 Prediction Result")
-        st.success(f"Predicted Outcome: {prediction}")
-
-        st.subheader("📊 Prediction Probabilities")
+        # Confusion Matrix
+        y_pred = model.predict(X_test)
+        cm = confusion_matrix(y_test, y_pred)
         fig, ax = plt.subplots()
-        ax.bar(model.classes_, proba, color="#1f77b4")
-        ax.set_ylabel("Probability")
-        ax.set_title("Class Probabilities")
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+        disp.plot(ax=ax)
         st.pyplot(fig)
 
-        st.subheader("💡 Feature Importance")
-        imp_df = get_feature_importance(model)
-        st.bar_chart(imp_df.set_index("Feature"))
+        # Classification Report
+        report = classification_report(y_test, y_pred, output_dict=True)
+        st.dataframe(pd.DataFrame(report).transpose())
 
-        st.subheader("📈 Model Evaluation")
-        y_pred = model.predict(X_test)
-        report = pd.DataFrame(classification_report(y_test, y_pred, output_dict=True)).transpose()
-        st.dataframe(report)
+        # Feature Importance
+        st.subheader("🔍 Feature Importance")
+        importance_df = get_feature_importance(model)
+        importance_df = importance_df.sort_values(by="Importance", ascending=False)
+        st.bar_chart(importance_df.set_index("Feature"))
 
-        cm = confusion_matrix(y_test, y_pred)
-        fig2, ax2 = plt.subplots()
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=model.classes_, yticklabels=model.classes_)
-        ax2.set_title("Confusion Matrix")
-        ax2.set_xlabel("Predicted")
-        ax2.set_ylabel("Actual")
-        st.pyplot(fig2)
+        # ROC / PR Curves
+        try:
+            st.subheader("📊 ROC Curve")
+            fig_roc, ax_roc = plt.subplots()
+            RocCurveDisplay.from_estimator(model, X_test, y_test, ax=ax_roc)
+            st.pyplot(fig_roc)
+
+            st.subheader("📊 Precision-Recall Curve")
+            fig_pr, ax_pr = plt.subplots()
+            PrecisionRecallDisplay.from_estimator(model, X_test, y_test, ax=ax_pr)
+            st.pyplot(fig_pr)
+        except Exception as e:
+            st.warning("ROC/PR curves not available for this model.")
 
 else:
-    st.warning("👈 Upload a CSV file to get started.")
+    st.warning("👈 Please upload a CSV file to begin.")
