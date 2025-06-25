@@ -32,6 +32,7 @@ def train_model(
     model_name: str = "Random Forest",
     grid_search: bool = False,
 ):
+    """Train a model using a preprocessing pipeline."""
     X = df[feature_columns]
     y = df[target_column]
 
@@ -46,19 +47,25 @@ def train_model(
     )
 
     estimator, param_grid = _build_estimator(model_name)
+
     pipe = Pipeline([("preprocessor", preprocessor), ("clf", estimator)])
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
 
     best_params = None
     cv_score = None
 
     if grid_search:
-        grid = GridSearchCV(pipe, param_grid, cv=5, n_jobs=-1)
-        grid.fit(X_train, y_train)
-        model = grid.best_estimator_
-        best_params = grid.best_params_
-        cv_score = grid.best_score_
+        try:
+            grid = GridSearchCV(pipe, param_grid, cv=5, n_jobs=-1, error_score='raise')
+            grid.fit(X_train, y_train)
+            model = grid.best_estimator_
+            best_params = grid.best_params_
+            cv_score = grid.best_score_
+        except Exception as e:
+            raise RuntimeError(f"❌ GridSearchCV failed: {str(e)}")
     else:
         scores = cross_val_score(pipe, X_train, y_train, cv=5)
         cv_score = scores.mean()
@@ -68,6 +75,7 @@ def train_model(
 
 
 def get_feature_importance(model: Pipeline):
+    """Return feature importance dataframe for the trained pipeline."""
     preprocessor = model.named_steps["preprocessor"]
     clf = model.named_steps["clf"]
 
