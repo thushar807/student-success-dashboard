@@ -1,122 +1,118 @@
+import streamlit as st
 import pandas as pd
-from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import classification_report, confusion_matrix
+import seaborn as sns
 
+from modeling import train_model, get_feature_importance
 
-def _build_estimator(name: str):
-    if name == "Random Forest":
-        estimator = RandomForestClassifier(random_state=42, class_weight="balanced")
-        param_grid = {
-            "clf__n_estimators": [100, 200],
-            "clf__max_depth": [None, 10, 20],
-        }
-    elif name == "Logistic Regression":
-        estimator = LogisticRegression(max_iter=1000)
-        param_grid = {
-            "clf__C": [0.1, 1.0, 10.0],
-            "clf__penalty": ["l2"],
-        }
-    else:
-        raise ValueError(f"Unsupported model type: {name}")
-    return estimator, param_grid
+# Page Config
+st.set_page_config(page_title="🎓 Student Success Predictor", layout="wide")
+st.markdown("""
+    <style>
+    body {
+        background-image: url("https://raw.githubusercontent.com/ThusharStorage/student-assets/main/wow-office.jpg");
+        background-size: cover;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }
+    .stApp {
+        background-color: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(6px);
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+    }
+    </style>
+""", unsafe_allow_html=True)
 
+st.markdown("<h1 style='text-align: center; color: #2E8B57;'>🎓 Student Success Predictor Dashboard</h1>", unsafe_allow_html=True)
 
-def train_model(
-    df: pd.DataFrame,
-    feature_columns,
-    target_column: str,
-    model_name: str = "Random Forest",
-    grid_search: bool = False,
-):
-    """
-    Train a model using a preprocessing pipeline.
+# Upload Data
+with st.sidebar:
+    st.header("📁 Upload Student Dataset")
+    uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Full dataframe containing features and target.
-    feature_columns : list
-        List of feature column names.
-    target_column : str
-        Name of the target column.
-    model_name : str, optional
-        Estimator to use ("Random Forest" or "Logistic Regression"), by default "Random Forest".
-    grid_search : bool, optional
-        Whether to perform hyperparameter tuning with GridSearchCV, by default False.
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+    st.subheader("📄 Dataset Preview")
+    st.dataframe(df.head())
 
-    Returns
-    -------
-    model : sklearn Pipeline
-        Trained model.
-    X_test, y_test : pd.DataFrame, pd.Series
-        Holdout data for evaluation.
-    best_params : dict or None
-        Best parameters found during grid search.
-    cv_score : float or None
-        Mean cross-validated accuracy.
-    """
-    X = df[feature_columns]
-    y = df[target_column]
+    # Create PassStatus if missing
+    if "PassStatus" not in df.columns:
+        grade_cols = ["G3", "final_grade", "FinalGrade", "grade"]
+        found = False
+        for col in grade_cols:
+            if col in df.columns:
+                df["PassStatus"] = df[col].apply(lambda x: "Pass" if x >= 10 else "Fail")
+                found = True
+                break
+        if not found:
+            st.error("❌ Could not infer Pass/Fail column. Please include a grade column.")
+            st.stop()
 
-    cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
-    num_cols = [c for c in feature_columns if c not in cat_cols]
+    st.subheader("⚙️ Model Configuration")
+    target_column = "PassStatus"
+    feature_columns = st.multiselect("🧠 Select features for prediction:", options=[col for col in df.columns if col != target_column])
+    model_type = st.selectbox("Select Model", ["Random Forest", "Logistic Regression"])
+    use_grid = st.checkbox("Enable Hyperparameter Tuning (GridSearchCV)")
 
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ("cat", OneHotEncoder(handle_unknown="ignore"), cat_cols),
-            ("num", "passthrough", num_cols),
-        ]
-    )
+    if feature_columns:
+        with st.spinner("Training model..."):
+            model, X_test, y_test, best_params, cv_score = train_model(
+                df=df,
+                feature_columns=feature_columns,
+                target_column=target_column,
+                model_name=model_type,
+                grid_search=use_grid
+            )
 
-    estimator, param_grid = _build_estimator(model_name)
+        st.success("✅ Model trained successfully!")
 
-    pipe = Pipeline([("preprocessor", preprocessor), ("clf", estimator)])
+        if best_params:
+            st.info(f"🔍 Best Parameters: {best_params}")
+        st.write(f"📈 Cross-validated Score: {cv_score:.4f}")
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
+        # Prediction Form
+        st.subheader("📝 Enter Student Details")
+        user_input = {}
+        for col in feature_columns:
+            if df[col].dtype == "object":
+                user_input[col] = st.selectbox(f"{col}", sorted(df[col].dropna().unique()))
+            else:
+                user_input[col] = st.slider(f"{col}", float(df[col].min()), float(df[col].max()), float(df[col].mean()))
 
-    best_params = None
-    cv_score = None
+        input_df = pd.DataFrame([user_input])
+        prediction = model.predict(input_df)[0]
+        proba = model.predict_proba(input_df)[0]
 
-    if grid_search:
-        grid = GridSearchCV(pipe, param_grid, cv=5, n_jobs=-1)
-        grid.fit(X_train, y_train)
-        model = grid.best_estimator_
-        best_params = grid.best_params_
-        cv_score = grid.best_score_
-    else:
-        scores = cross_val_score(pipe, X_train, y_train, cv=5)
-        cv_score = scores.mean()
-        model = pipe.fit(X_train, y_train)
+        st.subheader("🎯 Prediction Result")
+        st.success(f"Predicted Outcome: {prediction}")
 
-    return model, X_test, y_test, best_params, cv_score
+        st.subheader("📊 Prediction Probabilities")
+        fig, ax = plt.subplots()
+        ax.bar(model.classes_, proba, color="#1f77b4")
+        ax.set_ylabel("Probability")
+        ax.set_title("Class Probabilities")
+        st.pyplot(fig)
 
+        st.subheader("💡 Feature Importance")
+        imp_df = get_feature_importance(model)
+        st.bar_chart(imp_df.set_index("Feature"))
 
-def get_feature_importance(model: Pipeline):
-    """
-    Return feature importance dataframe for the trained pipeline.
-    """
-    preprocessor = model.named_steps["preprocessor"]
-    clf = model.named_steps["clf"]
+        st.subheader("📈 Model Evaluation")
+        y_pred = model.predict(X_test)
+        report = pd.DataFrame(classification_report(y_test, y_pred, output_dict=True)).transpose()
+        st.dataframe(report)
 
-    feature_names = []
-    for name, transformer, cols in preprocessor.transformers_:
-        if name == "cat":
-            feature_names.extend(transformer.get_feature_names_out(cols))
-        else:
-            feature_names.extend(cols)
+        cm = confusion_matrix(y_test, y_pred)
+        fig2, ax2 = plt.subplots()
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=model.classes_, yticklabels=model.classes_)
+        ax2.set_title("Confusion Matrix")
+        ax2.set_xlabel("Predicted")
+        ax2.set_ylabel("Actual")
+        st.pyplot(fig2)
 
-    if hasattr(clf, "feature_importances_"):
-        importance = clf.feature_importances_
-    elif hasattr(clf, "coef_"):
-        coef = clf.coef_[0]
-        importance = abs(coef)
-    else:
-        importance = [0] * len(feature_names)
-
-    return pd.DataFrame({"Feature": feature_names, "Importance": importance})
+else:
+    st.warning("👈 Upload a CSV file to get started.")
