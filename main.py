@@ -9,11 +9,10 @@ from sklearn.preprocessing import LabelEncoder
 
 # 🎨 Page config + background styling
 st.set_page_config(page_title="🎓 Student Success Predictor", layout="wide")
-
 st.markdown("""
     <style>
     body {
-        background-image: url("https://raw.githubusercontent.com/ThusharStorage/student-assets/main/bg2.png");
+        background-image: url("https://raw.githubusercontent.com/ThusharStorage/student-assets/main/wow-office.jpg");
         background-size: cover;
         background-repeat: no-repeat;
         background-attachment: fixed;
@@ -34,8 +33,6 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
-
-st.markdown("<h1 style='text-align: center;'>🎓 Student Success Predictor Dashboard</h1>", unsafe_allow_html=True)
 
 # 🌟 Smart Pass/Fail inference
 def infer_pass_fail(df):
