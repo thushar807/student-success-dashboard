@@ -7,26 +7,35 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
 from sklearn.preprocessing import LabelEncoder
 
-# 🎨 Page configuration
+# 🎨 Page config + background styling
 st.set_page_config(page_title="🎓 Student Success Predictor", layout="wide")
+
 st.markdown("""
     <style>
     body {
-        background-image: url('https://images.unsplash.com/photo-1522071820081-009f0129c71c');
+        background-image: url("https://raw.githubusercontent.com/ThusharStorage/student-assets/main/bg2.png");
         background-size: cover;
         background-repeat: no-repeat;
         background-attachment: fixed;
     }
     .stApp {
-        background-color: rgba(255, 255, 255, 0.88);
-        backdrop-filter: blur(5px);
-        border-radius: 12px;
-        padding: 10px;
+        background-color: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(6px);
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+    }
+    .block-container {
+        padding-top: 2rem;
+    }
+    h1 {
+        color: #2E8B57;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center; color: #2E8B57;'>🎓 Student Success Predictor Dashboard</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🎓 Student Success Predictor Dashboard</h1>", unsafe_allow_html=True)
 
 # 🌟 Smart Pass/Fail inference
 def infer_pass_fail(df):
@@ -56,17 +65,18 @@ def infer_pass_fail(df):
     df['Pass_Fail'] = inferred.map({1: 'Pass', 0: 'Fail'})
     return df, proxy_cols
 
-# 📂 Upload section
+# 📂 Sidebar upload
 with st.sidebar:
     st.markdown("### 📁 Upload Student Dataset")
     uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
+    st.markdown("---")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
     st.subheader("📄 Dataset Preview")
     st.dataframe(df.head())
 
-    # 🔍 Step 1: Infer PassStatus
+    # 🔍 Step 1: Ensure PassStatus exists
     if "PassStatus" not in df.columns:
         grade_cols = ["G3", "final_grade", "FinalGrade", "grade"]
         found = False
@@ -86,7 +96,7 @@ if uploaded_file:
                 st.error("❌ Could not determine pass/fail. Please use a dataset with grades.")
                 st.stop()
 
-    # ⚙️ Step 2: Model setup
+    # ⚙️ Step 2: Model
     st.subheader("⚙️ Model Settings")
     target_column = "PassStatus"
     feature_columns = st.multiselect("🧠 Select input features for prediction:", options=[col for col in df.columns if col != target_column])
@@ -109,7 +119,7 @@ if uploaded_file:
 
         st.success("✅ Model trained successfully!")
 
-        # 📝 Step 3: Prediction form
+        # 📝 Step 3: User Input
         st.subheader("📝 Enter Student Details")
         with st.container():
             st.markdown("<div style='background-color:#f9f9f9; padding: 20px; border-radius: 10px;'>", unsafe_allow_html=True)
@@ -132,7 +142,7 @@ if uploaded_file:
         proba = model.predict_proba(input_df)[0]
         label_names = encoders[target_column].classes_ if target_column in encoders else sorted(y.unique())
 
-        # 🎯 Step 4: Output
+        # 🎯 Output
         st.subheader("🎯 Prediction Result")
         st.success(f"**Predicted Class:** {encoders[target_column].inverse_transform([prediction])[0] if target_column in encoders else prediction}")
 
