@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
@@ -86,12 +87,19 @@ def get_feature_importance(model: Pipeline):
         else:
             feature_names.extend(cols)
 
+    # Determine importance
     if hasattr(clf, "feature_importances_"):
         importance = clf.feature_importances_
     elif hasattr(clf, "coef_"):
-        coef = clf.coef_[0]
-        importance = abs(coef)
+        coefs = np.abs(clf.coef_)
+        if coefs.ndim > 1:
+            importance = np.mean(coefs, axis=0)
+        else:
+            importance = coefs
     else:
-        importance = [0] * len(feature_names)
+        importance = np.zeros(len(feature_names))
+
+    if len(feature_names) != len(importance):
+        raise ValueError("Mismatch between feature names and importance scores")
 
     return pd.DataFrame({"Feature": feature_names, "Importance": importance})
