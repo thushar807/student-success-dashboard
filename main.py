@@ -28,8 +28,14 @@ if uploaded_file:
     try:
         df = pd.read_csv(uploaded_file)
 
+        # 🧼 Clean missing values
         if df.isnull().sum().sum() > 0:
-            st.warning("⚠️ Dataset contains missing values. Please clean the data before proceeding.")
+            st.warning("⚠️ Dataset contains missing values. We'll remove incomplete rows to proceed.")
+            df = df.dropna()
+
+        if df.empty:
+            st.error("❌ All rows were removed due to missing values. Please upload a cleaner dataset.")
+            st.stop()
 
         st.subheader("📄 Dataset Preview")
         st.dataframe(df.head())
@@ -61,15 +67,33 @@ if uploaded_file:
 
                             # 📈 Evaluation
                             y_pred = model.predict(X_test)
+
+                            # 💬 Student-level prediction message
+                            st.subheader("🎯 Outcome Summary (for each student)")
+                            outcome_map = {
+                                0: "⚠️ This student may need support.",
+                                1: "✅ This student is likely to succeed.",
+                            }
+
+                            results = pd.DataFrame({
+                                "Prediction": y_pred
+                            })
+
+                            results["Result Message"] = results["Prediction"].map(outcome_map)
+                            st.dataframe(results.head())
+
+                            # 📊 Classification Report
                             report = classification_report(y_test, y_pred, output_dict=True)
                             st.subheader("📊 Classification Report")
                             st.dataframe(pd.DataFrame(report).transpose())
 
+                            # 📉 Confusion Matrix
                             st.subheader("📉 Confusion Matrix")
                             fig, ax = plt.subplots()
                             ConfusionMatrixDisplay.from_predictions(y_test, y_pred, ax=ax)
                             st.pyplot(fig)
 
+                            # 📌 Feature Importance
                             st.subheader("📌 Feature Importance")
                             imp_df = get_feature_importance(model)
                             st.bar_chart(imp_df.set_index("Feature"))
