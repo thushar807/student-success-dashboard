@@ -42,7 +42,7 @@ def train_model(
 
     preprocessor = ColumnTransformer(
         transformers=[
-            ("cat", OneHotEncoder(handle_unknown="ignore"), cat_cols),
+            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), cat_cols),,
             ("num", "passthrough", num_cols),
         ]
     )
