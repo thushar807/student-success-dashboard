@@ -28,81 +28,95 @@ if uploaded_file:
     try:
         df = pd.read_csv(uploaded_file)
 
-        # 🧼 Clean missing values
+        # 🧼 Drop rows with missing values
         if df.isnull().sum().sum() > 0:
-            st.warning("⚠️ Dataset contains missing values. We'll remove incomplete rows to proceed.")
+            st.warning("⚠️ Dataset had missing values. Dropping incomplete rows.")
             df = df.dropna()
-
         if df.empty:
-            st.error("❌ All rows were removed due to missing values. Please upload a cleaner dataset.")
+            st.error("❌ All rows removed due to missing data.")
             st.stop()
 
         st.subheader("📄 Dataset Preview")
         st.dataframe(df.head())
 
-        # ➕ Feature Selection
-        columns = df.columns.tolist()
-        target_column = st.selectbox("🎯 Select the target column (Pass/Fail):", columns)
-        feature_columns = st.multiselect("🧠 Select features for prediction:", [col for col in columns if col != target_column])
+        # 🎯 Auto-detect target column
+        if "Class" in df.columns:
+            target_column = "Class"
+        elif "Pass/Fail" in df.columns:
+            target_column = "Pass/Fail"
+        else:
+            st.error("❌ Could not auto-detect target column. Make sure it has a 'Class' or 'Pass/Fail' column.")
+            st.stop()
 
-        if target_column and feature_columns:
-            if df[target_column].nunique() > 2:
-                st.error("🚫 Target column must be binary (e.g., Pass/Fail or Yes/No).")
-            else:
-                # ⚙️ Model Selection
-                model_name = st.selectbox("🔍 Choose Model", ["Random Forest", "Logistic Regression"])
-                use_grid = st.checkbox("Tune Hyperparameters (Grid Search)?")
+        # 🔄 Auto-convert target to binary (1 = Pass, 0 = At Risk)
+        success_values = ['H', 'High', 'Pass', 'Yes', '1', 1]
+        df[target_column] = df[target_column].apply(lambda x: 1 if str(x).strip() in success_values else 0)
 
-                if st.button("🚀 Train Model"):
-                    with st.spinner("Training in progress..."):
-                        try:
-                            model, X_test, y_test, best_params, cv_score = train_model(
-                                df, feature_columns, target_column, model_name, use_grid
-                            )
+        # 🧠 Auto-select relevant features (drop ID, gender, nationality, etc.)
+        excluded_cols = ['gender', 'NationalITy', 'PlaceofBirth', target_column]
+        feature_columns = [col for col in df.columns if col not in excluded_cols and df[col].dtype in [np.number, "object"]]
 
-                            st.success("✅ Model trained successfully!")
-                            st.write(f"📊 Cross-validated Accuracy: **{cv_score:.4f}**")
-                            if best_params:
-                                st.write("🔧 Best Parameters:", best_params)
+        # 👥 Save ID or Name column for display if available
+        display_id_col = None
+        for col in ['StudentID', 'Name', 'ID']:
+            if col in df.columns:
+                display_id_col = col
+                break
 
-                            # 📈 Evaluation
-                            y_pred = model.predict(X_test)
+        st.info(f"🎯 Using '{target_column}' as target. Predicting student success...")
 
-                            # 💬 Student-level prediction message
-                            st.subheader("🎯 Outcome Summary (for each student)")
-                            outcome_map = {
-                                0: "⚠️ This student may need support.",
-                                1: "✅ This student is likely to succeed.",
-                            }
+        # 🔍 Model selection
+        model_name = st.selectbox("Choose Model", ["Random Forest", "Logistic Regression"])
+        use_grid = st.checkbox("Use Grid Search for Hyperparameter Tuning?")
 
-                            results = pd.DataFrame({
-                                "Prediction": y_pred
-                            })
+        if st.button("🚀 Predict Now"):
+            with st.spinner("Training model and making predictions..."):
+                try:
+                    model, X_test, y_test, best_params, cv_score = train_model(
+                        df, feature_columns, target_column, model_name, use_grid
+                    )
 
-                            results["Result Message"] = results["Prediction"].map(outcome_map)
-                            st.dataframe(results.head())
+                    st.success("✅ Prediction complete!")
+                    st.write(f"📊 Cross-validated Accuracy: **{cv_score:.4f}**")
+                    if best_params:
+                        st.write("🔧 Best Parameters:", best_params)
 
-                            # 📊 Classification Report
-                            report = classification_report(y_test, y_pred, output_dict=True)
-                            st.subheader("📊 Classification Report")
-                            st.dataframe(pd.DataFrame(report).transpose())
+                    # 🔮 Predict and display student outcomes
+                    y_pred = model.predict(X_test)
+                    outcome_map = {
+                        0: "⚠️ At Risk",
+                        1: "✅ Likely to Pass"
+                    }
 
-                            # 📉 Confusion Matrix
-                            st.subheader("📉 Confusion Matrix")
-                            fig, ax = plt.subplots()
-                            ConfusionMatrixDisplay.from_predictions(y_test, y_pred, ax=ax)
-                            st.pyplot(fig)
+                    # Build result table
+                    result_table = pd.DataFrame({
+                        "Prediction": y_pred,
+                        "Status": [outcome_map[p] for p in y_pred]
+                    })
 
-                            # 📌 Feature Importance
-                            st.subheader("📌 Feature Importance")
-                            imp_df = get_feature_importance(model)
-                            st.bar_chart(imp_df.set_index("Feature"))
+                    if display_id_col:
+                        result_table[display_id_col] = df.loc[X_test.index, display_id_col].values
+                        result_table = result_table[[display_id_col, "Prediction", "Status"]]
 
-                        except Exception as e:
-                            st.error(f"❌ An error occurred during training: {str(e)}")
+                    st.subheader("📋 Student Outcomes")
+                    st.dataframe(result_table)
+
+                    # 📊 Confusion Matrix
+                    st.subheader("📉 Confusion Matrix")
+                    fig, ax = plt.subplots()
+                    ConfusionMatrixDisplay.from_predictions(y_test, y_pred, ax=ax)
+                    st.pyplot(fig)
+
+                    # 📌 Feature Importance
+                    st.subheader("📌 Feature Importance")
+                    imp_df = get_feature_importance(model)
+                    st.bar_chart(imp_df.set_index("Feature"))
+
+                except Exception as e:
+                    st.error(f"❌ Error during training: {str(e)}")
 
     except Exception as e:
-        st.error(f"❌ Failed to read CSV: {str(e)}")
+        st.error(f"❌ Failed to load CSV: {str(e)}")
 
 else:
     st.info("👈 Upload a dataset to get started.")
