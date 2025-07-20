@@ -65,19 +65,16 @@ if uploaded_file:
 
         st.info(f"🎯 Using '{target_column}' as target. Predicting student success...")
 
-        # 🔍 Model selection
-        model_name = st.selectbox("Choose Model", ["Random Forest", "Logistic Regression"])
-        use_grid = st.checkbox("Use Grid Search for Hyperparameter Tuning?")
-
         if st.button("🚀 Predict Now"):
             with st.spinner("Training model and making predictions..."):
                 try:
-                    model, X_test, y_test, best_params, cv_score = train_model(
-                        df, feature_columns, target_column, model_name, use_grid
+                    model, X_test, y_test, best_params, cv_score, best_model_name = train_model(
+                        df, feature_columns, target_column
                     )
 
                     st.success("✅ Prediction complete!")
                     st.write(f"📊 Cross-validated Accuracy: **{cv_score:.4f}**")
+                    st.write(f"🧠 Best Model Selected: **{best_model_name}**")
                     if best_params:
                         st.write("🔧 Best Parameters:", best_params)
 
@@ -88,7 +85,6 @@ if uploaded_file:
                         1: "✅ Likely to Pass"
                     }
 
-                    # Build result table
                     result_table = pd.DataFrame({
                         "Prediction": y_pred,
                         "Status": [outcome_map[p] for p in y_pred]
@@ -101,7 +97,7 @@ if uploaded_file:
                     st.subheader("📋 Student Outcomes")
                     st.dataframe(result_table)
 
-                    # 📊 Confusion Matrix
+                    # 📉 Confusion Matrix
                     st.subheader("📉 Confusion Matrix")
                     fig, ax = plt.subplots()
                     ConfusionMatrixDisplay.from_predictions(y_test, y_pred, ax=ax)
